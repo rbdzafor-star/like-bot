@@ -40,6 +40,7 @@ if not TOKEN:
 
 extensions = [
     "cogs.likeCommands"
+    "cogs.auto_like"
 ]
 
 
