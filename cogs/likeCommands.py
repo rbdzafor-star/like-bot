@@ -11,6 +11,11 @@ from dotenv import load_dotenv
 load_dotenv()
 API_URL=os.getenv("API_URL")
 CONFIG_FILE = "like_channels.json"
+from datetime import timedelta
+
+MAX_REQUESTS = 2
+RESET_TIME = timedelta(hours=24)   # 24-hour reset
+
 
 class LikeCommands(commands.Cog):
     def __init__(self, bot):
@@ -19,6 +24,8 @@ class LikeCommands(commands.Cog):
         self.config_data = self.load_config()
         self.cooldowns = {}
         self.session = aiohttp.ClientSession()
+        self.requests = {}  # {user_id: {"used": int, "last_reset": datetime}}
+
 
 
     def load_config(self):
@@ -92,6 +99,25 @@ class LikeCommands(commands.Cog):
             return
 
         user_id = ctx.author.id
+        # --- Request limit system ---
+now = datetime.now()
+user_requests = self.requests.get(user_id, {"used": 0, "last_reset": now})
+
+# Reset if expired
+if now - user_requests["last_reset"] > RESET_TIME:
+    user_requests = {"used": 0, "last_reset": now}
+
+# Check limit
+if user_requests["used"] >= MAX_REQUESTS:
+    await ctx.send("❌ You have no requests left. Please wait for reset (24h).", ephemeral=is_slash)
+    return
+
+# Count this request
+user_requests["used"] += 1
+self.requests[user_id] = user_requests
+
+remaining = MAX_REQUESTS - user_requests["used"]
+
         cooldown = 30
         if user_id in self.cooldowns:
             last_used = self.cooldowns[user_id]
@@ -137,6 +163,7 @@ class LikeCommands(commands.Cog):
                             f"   ├─ ADDED: +{data.get('likes_added', 0)}\n"
                             f"   ├─ BEFORE: {data.get('likes_before', 'N/A')}\n"
                             f"   └─ AFTER: {data.get('likes_after', 'N/A')}\n"
+                            f"📌 Requests remaining: {remaining}/{MAX_REQUESTS}\n"
                         )
                     else:
                         embed.description = "This UID has already received the maximum likes today.\nPlease wait 24 hours and try again"
