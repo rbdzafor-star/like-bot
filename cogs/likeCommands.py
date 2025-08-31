@@ -12,7 +12,7 @@ load_dotenv()
 API_URL = os.getenv("API_URL")
 CONFIG_FILE = "like_channels.json"
 
-MAX_REQUESTS = 2
+MAX_REQUESTS = 3
 RESET_TIME = timedelta(hours=24)  # Reset after 24 hours
 
 
