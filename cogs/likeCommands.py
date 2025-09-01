@@ -57,6 +57,27 @@ class LikeCommands(commands.Cog):
         pass
 
     # -------------------- COMMANDS --------------------
+    @commands.hybrid_command(name="setlikechannel", description="Sets allowed channels for /like")
+    @commands.has_permissions(administrator=True)
+    async def set_like_channel(self, ctx: commands.Context, channel: discord.TextChannel):
+        if ctx.guild is None:
+            await ctx.send("This command can only be used in a server.", ephemeral=True)
+            return
+
+        guild_id = str(ctx.guild.id)
+        server_conf = self.config_data["servers"].setdefault(guild_id, {})
+        like_channels = server_conf.setdefault("like_channels", [])
+        server_conf.setdefault("auto_like", [])  # ensure exists
+
+        cid = str(channel.id)
+        if cid in like_channels:
+            like_channels.remove(cid)
+            self.save_config()
+            await ctx.send(f"❌ Removed {channel.mention} from allowed /like channels.", ephemeral=True)
+        else:
+            like_channels.append(cid)
+            self.save_config()
+            await ctx.send(f"✅ Added {channel.mention} to allowed /like channels.", ephemeral=True)
         @commands.hybrid_command(name="likestats", description="Check your daily like request usage")
     async def like_stats(self, ctx: commands.Context):
         user_id = ctx.author.id
@@ -81,28 +102,7 @@ class LikeCommands(commands.Cog):
         embed.set_footer(text="Resets at midnight server time • DEVELOPED BY TANVIR")
 
         await ctx.send(embed=embed, ephemeral=True)
-
-    @commands.hybrid_command(name="setlikechannel", description="Sets allowed channels for /like")
-    @commands.has_permissions(administrator=True)
-    async def set_like_channel(self, ctx: commands.Context, channel: discord.TextChannel):
-        if ctx.guild is None:
-            await ctx.send("This command can only be used in a server.", ephemeral=True)
-            return
-
-        guild_id = str(ctx.guild.id)
-        server_conf = self.config_data["servers"].setdefault(guild_id, {})
-        like_channels = server_conf.setdefault("like_channels", [])
-        server_conf.setdefault("auto_like", [])  # ensure exists
-
-        cid = str(channel.id)
-        if cid in like_channels:
-            like_channels.remove(cid)
-            self.save_config()
-            await ctx.send(f"❌ Removed {channel.mention} from allowed /like channels.", ephemeral=True)
-        else:
-            like_channels.append(cid)
-            self.save_config()
-            await ctx.send(f"✅ Added {channel.mention} to allowed /like channels.", ephemeral=True)
+       
 
     @commands.hybrid_command(name="like", description="Send likes to a Free Fire player")
     @app_commands.describe(uid="Player UID", server="Region/Server")
