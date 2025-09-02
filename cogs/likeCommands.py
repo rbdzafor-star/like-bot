@@ -2,24 +2,28 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import aiohttp
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import os
 import asyncio
 from dotenv import load_dotenv
 
 load_dotenv()
-API_URL=os.getenv("API_URL")
+API_URL = os.getenv("API_URL")
 CONFIG_FILE = "like_channels.json"
+
+MAX_REQUESTS = 2
+RESET_TIME = timedelta(hours=24)  # Reset after 24 hours
+
 
 class LikeCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.api_host =API_URL
+        self.api_host = API_URL
         self.config_data = self.load_config()
         self.cooldowns = {}
+        self.requests = {}  # {user_id: {"used": int, "last_reset": datetime}}
         self.session = aiohttp.ClientSession()
-
 
     def load_config(self):
         default_config = {
@@ -70,19 +74,19 @@ class LikeCommands(commands.Cog):
         if channel_id_str in like_channels:
             like_channels.remove(channel_id_str)
             self.save_config()
-            await ctx.send(f"✅ Channel {channel.mention} has been **removed** from allowed channels for /like commands. The command is now **disallowed** there.", ephemeral=True)
+            await ctx.send(f"✅ Channel {channel.mention} has been **removed** from allowed channels for /like commands.", ephemeral=True)
         else:
             like_channels.append(channel_id_str)
             self.save_config()
-            await ctx.send(f"✅ Channel {channel.mention} is now **allowed** for /like commands. The command will **only** work in specified channels if any are set.", ephemeral=True)
+            await ctx.send(f"✅ Channel {channel.mention} is now **allowed** for /like commands.", ephemeral=True)
 
     @commands.hybrid_command(name="like", description="Sends likes to a Free Fire player")
     @app_commands.describe(uid="Player UID (numbers only, minimum 6 characters)")
-    async def like_command(self, ctx: commands.Context,server:str=None , uid: str = None):
+    async def like_command(self, ctx: commands.Context, server: str = None, uid: str = None):
         is_slash = ctx.interaction is not None
 
         if uid and server is None:
-            return await ctx.send("UID and server are required",delete_after=10)
+            return await ctx.send("UID and server are required", delete_after=10)
         if not await self.check_channel(ctx):
             msg = "This command is not available in this channel. Please use it in an authorized channel."
             if is_slash:
@@ -92,12 +96,30 @@ class LikeCommands(commands.Cog):
             return
 
         user_id = ctx.author.id
+
+        # --- Request limit system ---
+        now = datetime.now()
+        user_requests = self.requests.get(user_id, {"used": 0, "last_reset": now})
+
+        if now - user_requests["last_reset"] > RESET_TIME:
+            user_requests = {"used": 0, "last_reset": now}
+
+        if user_requests["used"] >= MAX_REQUESTS:
+            await ctx.send("❌ You have no requests left. Please wait for reset (24h).", ephemeral=is_slash)
+            return
+
+        # Count this request
+        user_requests["used"] += 1
+        self.requests[user_id] = user_requests
+        remaining = MAX_REQUESTS - user_requests["used"]
+
+        # --- Cooldown (30s) ---
         cooldown = 30
         if user_id in self.cooldowns:
             last_used = self.cooldowns[user_id]
-            remaining = cooldown - (datetime.now() - last_used).seconds
-            if remaining > 0:
-                await ctx.send(f"Please wait {remaining} seconds before using this command again.", ephemeral=is_slash)
+            remaining_cd = cooldown - (datetime.now() - last_used).seconds
+            if remaining_cd > 0:
+                await ctx.send(f"Please wait {remaining_cd} seconds before using this command again.", ephemeral=is_slash)
                 return
         self.cooldowns[user_id] = datetime.now()
 
@@ -105,12 +127,11 @@ class LikeCommands(commands.Cog):
             await ctx.reply("Invalid UID. It must contain only numbers and be at least 6 characters long.", mention_author=False, ephemeral=is_slash)
             return
 
-
         try:
             async with ctx.typing():
                 url = f"{self.api_host}/like?uid={uid}&server={server}"
                 print(url)
-                async with self.session.get(url ) as response:
+                async with self.session.get(url) as response:
                     if response.status == 404:
                         await self._send_player_not_found(ctx, uid)
                         return
@@ -136,7 +157,8 @@ class LikeCommands(commands.Cog):
                             f"└─ RESULT:\n"
                             f"   ├─ ADDED: +{data.get('likes_added', 0)}\n"
                             f"   ├─ BEFORE: {data.get('likes_before', 'N/A')}\n"
-                            f"   └─ AFTER: {data.get('likes_after', 'N/A')}\n"
+                            f"   └─ AFTER: {data.get('likes_after', 'N/A')}\n\n"
+                            f"📌 Requests remaining: {remaining}/{MAX_REQUESTS}\n"
                         )
                     else:
                         embed.description = "This UID has already received the maximum likes today.\nPlease wait 24 hours and try again"
@@ -155,7 +177,7 @@ class LikeCommands(commands.Cog):
         embed = discord.Embed(title="Player Not Found", description=f"The UID {uid} does not exist or is not accessible.", color=0xE74C3C)
         embed.add_field(name="Tip", value="Make sure that:\n- The UID is correct\n- The player is not private", inline=False)
         await ctx.send(embed=embed, ephemeral=True)
-        
+
     async def _send_api_error(self, ctx):
         embed = discord.Embed(title="⚠️ Service Unavailable", description="The Free Fire API is not responding at the moment.", color=0xF39C12)
         embed.add_field(name="Solution", value="Try again in a few minutes.", inline=False)
@@ -168,6 +190,7 @@ class LikeCommands(commands.Cog):
 
     def cog_unload(self):
         self.bot.loop.create_task(self.session.close())
+
 
 async def setup(bot):
     await bot.add_cog(LikeCommands(bot))
