@@ -141,6 +141,12 @@ class LikeCommands(commands.Cog):
                         color=0x2ECC71 if data.get("status") == 1 else 0xE74C3C,
                         timestamp=datetime.now(),
                     )
+                    # 🔗 JOIN link উপরে
+            embed.add_field(
+                name="DEVELOPER",
+                value="🔗 **[DEVELOPED BY TANVIR](https://discord.gg/RXSh8MpsZA)**",
+                inline=False
+            )
                     if data.get("status") == 1:
                         embed.description = (
                             f"**✅ Likes Sent!**\n\n"
@@ -152,7 +158,7 @@ class LikeCommands(commands.Cog):
                         embed.description = "⚠️ UID reached max likes today. Wait 24h."
 
                     embed.set_image(url="https://cdn.discordapp.com/attachments/1382641365799800934/1393525278562717766/standard.gif?ex=68c5e2cc&is=68c4914c&hm=2d66c3d9afc204897a52ae8b8d1482ed9010fdfeb4cba87a7ed8a925953a29b4")
-
+                    
                     embed.set_footer(text="Developed by Tanvir")
                     await ctx.send(embed=embed, ephemeral=is_slash)
 
